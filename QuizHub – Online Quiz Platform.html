@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>QuizHub – Online Quiz Platform</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--tx:#1b1f2a;--mut:#6a7183;--pri:#4f46e5;--pri-tx:#fff;--bd:#e3e6ef;--ok:#16a34a;--bad:#dc2626;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#12141c;--card:#1b1e29;--tx:#e8eaf2;--mut:#9aa1b5;--pri:#818cf8;--pri-tx:#12141c;--bd:#2c3040;--ok:#4ade80;--bad:#f87171}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#12141c;--card:#1b1e29;--tx:#e8eaf2;--mut:#9aa1b5;--pri:#818cf8;--pri-tx:#12141c;--bd:#2c3040;--ok:#4ade80;--bad:#f87171}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--card);z-index:10}
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--card);border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;padding:12px 20px;gap:12px;flex-wrap:wrap}
+.brand{font-weight:700;font-size:20px;color:var(--pri)}
+main{max-width:760px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:14px}
+h2{margin:0 0 12px}h3{margin:0 0 4px}
+.mut{color:var(--mut);font-size:14px}
+button{font:inherit;cursor:pointer;border:1px solid var(--bd);background:var(--card);color:var(--tx);padding:8px 14px;border-radius:8px}
+button.p{background:var(--pri);color:var(--pri-tx);border-color:var(--pri)}
+button.d{color:var(--bad)}
+input,select{font:inherit;width:100%;padding:9px 11px;margin:5px 0 10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)}
+.row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.opt{display:flex;gap:8px;align-items:center}
+.opt input[type=radio]{width:auto;margin:0}
+.opt input.ot{margin:4px 0}
+.ans{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border:1px solid var(--bd);border-radius:8px;margin:6px 0;cursor:pointer}
+.ans input{width:auto;margin:4px 0 0}
+.good{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent)}
+.wrong{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 14%,transparent)}
+.timer{font-weight:700;font-variant-numeric:tabular-nums}
+.score{font-size:44px;font-weight:800;color:var(--pri)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px;border-bottom:1px solid var(--bd)}
+.tabs{display:flex;gap:8px;margin-bottom:12px}.tabs button.on{background:var(--pri);color:var(--pri-tx)}
+.err{color:var(--bad);font-size:14px;min-height:20px}
+.scroll{overflow-x:auto}
+</style></head><body>
+<header><span class="brand">📝 QuizHub</span><span id="hd"></span></header>
+<main id="app"></main>
+<script>
+const KEY="quizhub_v1";let mem=null,db,view="auth",ctx={},tick=null,mode="login";
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const uid=()=>Math.random().toString(36).slice(2,10);
+const hash=s=>{let h=5381;for(const c of s)h=(h*33^c.charCodeAt(0))>>>0;return h.toString(36)};
+function seed(){return{session:null,users:[
+{id:"t1",name:"Demo Teacher",email:"teacher@demo.com",pw:hash("demo123"),role:"teacher"},
+{id:"s1",name:"Demo Student",email:"student@demo.com",pw:hash("demo123"),role:"student"}],
+quizzes:[{id:"q1",title:"Software Engineering Basics",mins:5,by:"t1",questions:[
+{t:"Which SDLC model is linear and sequential?",o:["Agile","Waterfall","Spiral","Scrum"],c:1},
+{t:"What does SRS stand for?",o:["Software Requirement Specification","System Run Schedule","Software Release Summary","Source Revision Sheet"],c:0},
+{t:"Which UML diagram shows interactions between actors and the system?",o:["Class diagram","Sequence diagram","Use case diagram","State diagram"],c:2},
+{t:"Testing individual units of code is called?",o:["Integration testing","System testing","Unit testing","Acceptance testing"],c:2},
+{t:"Which of these is a version control system?",o:["Git","Jira","Docker","Maven"],c:0}]}],results:[]}}
+function load(){try{const r=localStorage.getItem(KEY);if(r)return JSON.parse(r)}catch(e){}return mem||seed()}
+function save(){mem=db;try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){}}
+db=load();
+const me=()=>db.users.find(u=>u.id===db.session);
+function go(v,c){clearInterval(tick);view=v;ctx=c||{};render();window.scrollTo(0,0)}
+function render(){
+ const u=me();
+ $hd.innerHTML=u?`<span class="mut">${esc(u.name)} (${u.role})</span> <button onclick="logout()">Logout</button>`:"";
+ if(!u){return authView()}
+ ({home:homeView,create:createView,take:takeView,result:resultView,qres:qresView}[view]||homeView)();
+}
+const $hd=document.getElementById("hd"),$app=document.getElementById("app");
+function authView(){
+ $app.innerHTML=`<div class="card"><div class="tabs"><button class="${mode=="login"?"on":""}" onclick="mode='login';render()">Login</button><button class="${mode=="reg"?"on":""}" onclick="mode='reg';render()">Register</button></div>
+ ${mode=="reg"?`<label>Name<input id="nm"></label>`:""}
+ <label>Email<input id="em" type="email"></label><label>Password<input id="pw" type="password"></label>
+ ${mode=="reg"?`<label>I am a<select id="rl"><option value="student">Student</option><option value="teacher">Teacher</option></select></label>`:""}
+ <div class="err" id="er"></div><button class="p" onclick="auth()">${mode=="login"?"Login":"Create account"}</button>
+ <p class="mut">Demo logins: teacher@demo.com or student@demo.com, password demo123</p></div>`}
+function auth(){
+ const em=$em().trim().toLowerCase(),pw=document.getElementById("pw").value,er=document.getElementById("er");
+ if(!em||!pw){er.textContent="Please fill in all fields.";return}
+ if(mode=="login"){const u=db.users.find(x=>x.email===em&&x.pw===hash(pw));if(!u){er.textContent="Wrong email or password.";return}db.session=u.id}
+ else{const nm=document.getElementById("nm").value.trim();if(!nm){er.textContent="Enter your name.";return}
+  if(pw.length<6){er.textContent="Password needs 6+ characters.";return}
+  if(db.users.some(x=>x.email===em)){er.textContent="Email already registered.";return}
+  const u={id:uid(),name:nm,email:em,pw:hash(pw),role:document.getElementById("rl").value};db.users.push(u);db.session=u.id}
+ save();go("home")}
+const $em=()=>document.getElementById("em").value;
+function logout(){db.session=null;save();mode="login";go("auth")}
+function homeView(){
+ const u=me();
+ if(u.role=="teacher"){
+  const qs=db.quizzes.filter(q=>q.by==u.id);
+  $app.innerHTML=`<div class="row"><h2>Your quizzes</h2><button class="p" onclick="go('create')">+ New quiz</button></div>`+
+  (qs.length?qs.map(q=>`<div class="card row"><div><h3>${esc(q.title)}</h3><span class="mut">${q.questions.length} questions · ${q.mins} min · ${db.results.filter(r=>r.qid==q.id).length} attempts</span></div><div><button onclick="go('qres',{id:'${q.id}'})">Results</button> <button class="d" onclick="delQ('${q.id}')">Delete</button></div></div>`).join(""):`<p class="mut">No quizzes yet. Create your first one.</p>`);
+ }else{
+  const mine=db.results.filter(r=>r.uid==u.id).sort((a,b)=>b.at-a.at);
+  $app.innerHTML=`<h2>Available quizzes</h2>`+(db.quizzes.length?db.quizzes.map(q=>{const best=Math.max(-1,...db.results.filter(r=>r.qid==q.id&&r.uid==u.id).map(r=>r.score));
+   return `<div class="card row"><div><h3>${esc(q.title)}</h3><span class="mut">${q.questions.length} questions · ${q.mins} min${best>=0?` · Best: ${best}/${q.questions.length}`:""}</span></div><button class="p" onclick="go('take',{id:'${q.id}'})">Start</button></div>`}).join(""):`<p class="mut">No quizzes available yet.</p>`)+
+  `<h2>My results</h2>`+(mine.length?`<div class="card scroll"><table><tr><th>Quiz</th><th>Score</th><th>Date</th></tr>${mine.map(r=>`<tr><td>${esc(r.title)}</td><td>${r.score}/${r.total}</td><td>${new Date(r.at).toLocaleString()}</td></tr>`).join("")}</table></div>`:`<p class="mut">You haven’t attempted any quiz yet.</p>`);
+ }}
+function delQ(id){if(!confirm("Delete this quiz and its results?"))return;db.quizzes=db.quizzes.filter(q=>q.id!=id);db.results=db.results.filter(r=>r.qid!=id);save();render()}
+let qn=0;
+function qBlock(i){return `<div class="card q"><b>Question ${i}</b><input class="qt" placeholder="Question text">${[0,1,2,3].map(k=>`<label class="opt"><input type="radio" name="c${i}" value="${k}" ${k==0?"checked":""}><input class="ot" placeholder="Option ${"ABCD"[k]}"></label>`).join("")}<span class="mut">Select the radio button next to the correct answer.</span></div>`}
+function createView(){qn=1;
+ $app.innerHTML=`<h2>Create quiz</h2><div class="card"><label>Title<input id="qt"></label><label>Time limit (minutes)<input id="qm" type="number" min="1" value="10"></label></div><div id="qs">${qBlock(1)}</div>
+ <div class="err" id="er"></div><div class="row"><button onclick="qn++;document.getElementById('qs').insertAdjacentHTML('beforeend',qBlock(qn))">+ Add question</button><span><button onclick="go('home')">Cancel</button> <button class="p" onclick="saveQ()">Save quiz</button></span></div>`}
+function saveQ(){
+ const er=document.getElementById("er"),title=document.getElementById("qt").value.trim(),mins=+document.getElementById("qm").value;
+ if(!title||!(mins>0)){er.textContent="Add a title and a valid time limit.";return}
+ const qs=[];for(const b of document.querySelectorAll(".q")){const t=b.querySelector(".qt").value.trim(),o=[...b.querySelectorAll(".ot")].map(x=>x.value.trim());
+  if(!t||o.some(x=>!x)){er.textContent="Every question needs text and all 4 options.";return}
+  qs.push({t,o,c:+b.querySelector("input[type=radio]:checked").value})}
+ db.quizzes.push({id:uid(),title,mins,by:db.session,questions:qs});save();go("home")}
+function takeView(){
+ const q=db.quizzes.find(x=>x.id==ctx.id);if(!q)return go("home");ctx.q=q;ctx.a=q.questions.map(()=>-1);const end=Date.now()+q.mins*60000;
+ $app.innerHTML=`<div class="row"><h2>${esc(q.title)}</h2><span class="timer" id="tm"></span></div>`+
+ q.questions.map((x,i)=>`<div class="card"><b>${i+1}. ${esc(x.t)}</b>${x.o.map((o,k)=>`<label class="ans"><input type="radio" name="a${i}" onchange="ctx.a[${i}]=${k}"><span>${esc(o)}</span></label>`).join("")}</div>`).join("")+
+ `<button class="p" onclick="submitQ()">Submit quiz</button>`;
+ const upd=()=>{const s=Math.max(0,Math.round((end-Date.now())/1000));document.getElementById("tm").textContent=`⏱ ${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;if(s<=0){clearInterval(tick);submitQ(true)}};
+ upd();tick=setInterval(upd,500)}
+function submitQ(auto){
+ const q=ctx.q,a=ctx.a;if(!auto&&a.includes(-1)&&!confirm("Some questions are unanswered. Submit anyway?"))return;
+ clearInterval(tick);const score=q.questions.filter((x,i)=>a[i]===x.c).length;
+ db.results.push({id:uid(),qid:q.id,title:q.title,uid:db.session,name:me().name,score,total:q.questions.length,at:Date.now()});save();
+ go("result",{q,a,score})}
+function resultView(){const{q,a,score}=ctx,pct=Math.round(score/q.questions.length*100);
+ $app.innerHTML=`<div class="card" style="text-align:center"><div class="mut">${esc(q.title)}</div><div class="score">${score}/${q.questions.length}</div><div>${pct}% – ${pct>=70?"Great job!":pct>=40?"Good effort, keep practising.":"Review the answers below and try again."}</div></div>`+
+ q.questions.map((x,i)=>`<div class="card"><b>${i+1}. ${esc(x.t)}</b>${x.o.map((o,k)=>`<div class="ans ${k==x.c?"good":k==a[i]?"wrong":""}">${k==x.c?"✔":k==a[i]?"✘":"•"} ${esc(o)}</div>`).join("")}${a[i]<0?`<span class="mut">Not answered</span>`:""}</div>`).join("")+
+ `<button class="p" onclick="go('home')">Back to quizzes</button>`}
+function qresView(){const q=db.quizzes.find(x=>x.id==ctx.id),rs=db.results.filter(r=>r.qid==ctx.id).sort((a,b)=>b.at-a.at);
+ const avg=rs.length?(rs.reduce((s,r)=>s+r.score,0)/rs.length).toFixed(1):"–";
+ $app.innerHTML=`<div class="row"><h2>${esc(q.title)} – results</h2><button onclick="go('home')">Back</button></div><div class="card">Attempts: <b>${rs.length}</b> · Average score: <b>${avg}/${q.questions.length}</b></div>`+
+ (rs.length?`<div class="card scroll"><table><tr><th>Student</th><th>Score</th><th>Date</th></tr>${rs.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.score}/${r.total}</td><td>${new Date(r.at).toLocaleString()}</td></tr>`).join("")}</table></div>`:`<p class="mut">No attempts yet.</p>`)}
+render();
+</script></body></html>
